@@ -1,8 +1,17 @@
 require("dotenv").config();
 
+const dns = require("dns");
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+
+// Some ISP/router DNS servers fail to resolve the SRV records that
+// mongodb+srv:// connection strings depend on, even though the OS
+// resolver handles them fine (Node uses its own resolver). Fall back
+// to public DNS servers for srv-style URIs to avoid ECONNREFUSED querySrv.
+if (process.env.MONGO_URI?.startsWith("mongodb+srv://")) {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+}
 
 const authRoutes = require("./routes/authRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
