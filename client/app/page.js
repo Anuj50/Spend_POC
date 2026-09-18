@@ -265,14 +265,14 @@ export default function HomePage() {
     <main className="min-h-screen pb-24">
       <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-bold text-white">{initial}</div>
-            <div>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white">{initial}</div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-400">Welcome back,</p>
-              <p className="font-bold leading-tight">{user?.name}</p>
+              <p className="truncate font-bold leading-tight">{user?.name}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <button className="rounded-xl p-2 text-gray-400 hover:bg-gray-100"><Bell size={20}/></button>
             <div className="hidden items-center gap-2 sm:flex">
               <Wallet size={18} className="text-blue-600"/>
@@ -339,8 +339,8 @@ export default function HomePage() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {bills.length === 0 ? <Empty text="No bills yet. Add one from the Home tab."/> :
                 bills.map(b => <div key={b._id} className="rounded-3xl bg-white p-5 shadow-sm">
-                  <div className="flex justify-between"><div><p className="font-bold">{b.title}</p><p className="text-sm text-gray-500">{b.provider}</p></div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${b.status === "Paid" ? "bg-gray-200" : "bg-blue-600 text-white"}`}>{b.status}</span></div>
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-bold">{b.title}</p><p className="truncate text-sm text-gray-500">{b.provider}</p></div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${b.status === "Paid" ? "bg-gray-200" : "bg-blue-600 text-white"}`}>{b.status}</span></div>
                   <p className="mt-5 text-2xl font-bold">₹{b.amount.toLocaleString("en-IN")}</p>
                   <p className="mt-1 text-sm text-gray-500">Due {new Date(b.dueDate).toLocaleDateString("en-IN")}</p>
                   {b.status !== "Paid" && <button onClick={() => payBill(b._id)} className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700">Mark as paid</button>}
@@ -358,12 +358,12 @@ export default function HomePage() {
               <Section title="Transaction History" desc="Every expense you've tracked"/>
               <div className="mt-5 overflow-hidden rounded-3xl bg-white shadow-sm">
                 {loading ? <Empty text="Loading your data..."/> : expenses.length === 0 ? <Empty text="No expenses yet."/> :
-                  expenses.map(x => <div key={x._id} className="flex items-center justify-between border-b p-5 last:border-0">
-                    <div className="flex items-center gap-4">
-                      <div className="rounded-2xl bg-blue-50 p-3 text-blue-600"><ShoppingBag size={19}/></div>
-                      <div><p className="font-semibold">{x.merchantName}</p><p className="text-sm text-gray-500">{new Date(x.date).toLocaleDateString("en-IN")} · {x.category}</p></div>
+                  expenses.map(x => <div key={x._id} className="flex items-center justify-between gap-3 border-b p-5 last:border-0">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="shrink-0 rounded-2xl bg-blue-50 p-3 text-blue-600"><ShoppingBag size={19}/></div>
+                      <div className="min-w-0"><p className="truncate font-semibold">{x.merchantName}</p><p className="truncate text-sm text-gray-500">{new Date(x.date).toLocaleDateString("en-IN")} · {x.category}</p></div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex shrink-0 items-center gap-4">
                       <div className="text-right"><p className="font-bold">₹{x.amount.toLocaleString("en-IN")}</p><p className="text-xs text-gray-500">GST ₹{x.gst.toLocaleString("en-IN")}</p></div>
                       <button onClick={() => deleteExpense(x._id)} aria-label="Delete expense" className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={18}/></button>
                     </div>
@@ -549,4 +549,4 @@ function Tool({icon,title,text,onClick}) { return <button onClick={onClick} clas
 function QuickLink({icon,label,onClick,last}) { return <button onClick={onClick} className={`flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 ${last ? "" : "border-b"}`}><span className="flex items-center gap-3 font-semibold"><span className="text-gray-400">{icon}</span>{label}</span><ChevronRight size={18} className="text-gray-300"/></button>; }
 function Section({title,desc}) { return <div><h2 className="text-2xl font-bold">{title}</h2><p className="mt-1 text-sm text-gray-500">{desc}</p></div>; }
 function Empty({text}) { return <div className="p-8 text-center text-gray-500">{text}</div>; }
-function Modal({title,children,onClose}) { return <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-6"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2>{onClose && <button onClick={onClose} className="rounded-xl p-2 hover:bg-gray-100"><X/></button>}</div><div className="mt-6">{children}</div></div></div>; }
+function Modal({title,children,onClose}) { return <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-5"><div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl bg-white p-6"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2>{onClose && <button onClick={onClose} className="rounded-xl p-2 hover:bg-gray-100"><X/></button>}</div><div className="mt-6 overflow-y-auto">{children}</div></div></div>; }
