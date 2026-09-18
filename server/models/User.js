@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema({
   gstin: { type: String, default: "", trim: true },
   billsScanned: { type: Number, default: 0, min: 0 },
   plan: { type: String, enum: ["free", "premium"], default: "free" },
+  resetPasswordToken: { type: String, select: false },
+  resetPasswordExpires: { type: Date, select: false },
   createdAt: { type: Date, default: Date.now }
 });
 

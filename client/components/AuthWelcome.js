@@ -8,6 +8,9 @@ export default function AuthWelcome({ onAuthed }) {
   const [mode, setMode] = useState("signin");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStatus, setForgotStatus] = useState("idle");
+  const [forgotError, setForgotError] = useState("");
 
   async function submit(event, path) {
     event.preventDefault();
@@ -32,6 +35,65 @@ export default function AuthWelcome({ onAuthed }) {
     }
   }
 
+  function openForgotPassword() {
+    setForgotMode(true);
+    setForgotStatus("idle");
+    setForgotError("");
+  }
+
+  function closeForgotPassword() {
+    setForgotMode(false);
+    setForgotStatus("idle");
+    setForgotError("");
+  }
+
+  async function submitForgotPassword(event) {
+    event.preventDefault();
+    setForgotError("");
+    setForgotStatus("sending");
+    const f = new FormData(event.currentTarget);
+    try {
+      await api("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: f.get("email") })
+      });
+      setForgotStatus("sent");
+    } catch (err) {
+      setForgotError(err.message);
+      setForgotStatus("idle");
+    }
+  }
+
+  if (forgotMode) {
+    return (
+      <div className="auth-shell">
+        <div className="flex items-center gap-3 text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10"><Wallet size={22} /></div>
+          <div>
+            <p className="font-bold leading-tight">Spend It Wisely</p>
+            <p className="text-xs text-white/50 leading-tight">Smart money management</p>
+          </div>
+        </div>
+        <div className="w-full max-w-sm rounded-3xl bg-white p-7 shadow-xl">
+          <h2 className="text-2xl font-bold">Reset password</h2>
+          <p className="mt-2 text-sm text-gray-500">Enter your account email and we'll send you a link to reset your password.</p>
+          {forgotStatus === "sent" ? (
+            <div className="mt-6 rounded-xl bg-blue-50 p-4 text-sm text-blue-700">
+              If that email is registered, a reset link has been sent. Check your inbox (and spam folder).
+            </div>
+          ) : (
+            <form onSubmit={submitForgotPassword} className="mt-6 space-y-4">
+              <TextField icon={<Mail size={18} />} name="email" type="email" placeholder="Email address" />
+              {forgotError && <p className="text-sm text-red-600">{forgotError}</p>}
+              <button disabled={forgotStatus === "sending"} className="primary">{forgotStatus === "sending" ? "Sending..." : "Send reset link"}</button>
+            </form>
+          )}
+          <button type="button" onClick={closeForgotPassword} className="mt-5 w-full text-sm text-gray-500">Back to sign in</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-shell">
       <div className="flex items-center gap-3 text-white">
@@ -50,6 +112,7 @@ export default function AuthWelcome({ onAuthed }) {
             <p className="text-sm text-gray-500">Welcome back. Let's see where your money went.</p>
             <TextField icon={<Mail size={18} />} name="email" type="email" placeholder="Email address" />
             <PasswordField name="password" placeholder="Password" />
+            <button type="button" onClick={openForgotPassword} className="-mt-2 text-sm font-semibold text-blue-600">Forgot password?</button>
             {mode === "signin" && error && <p className="text-sm text-red-600">{error}</p>}
             <button disabled={submitting} className="primary">{submitting ? "Signing in..." : "Sign in"}</button>
           </form>
@@ -94,6 +157,7 @@ export default function AuthWelcome({ onAuthed }) {
           <form onSubmit={(e) => submit(e, "/auth/login")} className="space-y-4">
             <TextField icon={<Mail size={18} />} name="email" type="email" placeholder="Email address" />
             <PasswordField name="password" placeholder="Password" />
+            <button type="button" onClick={openForgotPassword} className="-mt-2 text-sm font-semibold text-blue-600">Forgot password?</button>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <button disabled={submitting} className="primary">{submitting ? "Signing in..." : "Sign in"}</button>
           </form>
