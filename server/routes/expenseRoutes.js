@@ -1,5 +1,6 @@
 const express = require("express");
 const Expense = require("../models/Expense");
+const User = require("../models/User");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
@@ -29,7 +30,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { merchantName, category, amount, gstRate = 0, paymentMethod = "Other", date } = req.body;
+    const { merchantName, category, amount, gstRate = 0, paymentMethod = "Other", date, scanned } = req.body;
 
     const numericAmount = Number(amount);
     const rate = Number(gstRate);
@@ -47,6 +48,10 @@ router.post("/", async (req, res) => {
       paymentMethod,
       date: date || new Date()
     });
+
+    if (scanned) {
+      await User.findByIdAndUpdate(req.user.id, { $inc: { billsScanned: 1 } });
+    }
 
     res.status(201).json(expense);
   } catch {

@@ -35,3 +35,7 @@ export function clearSession() {
   localStorage.removeItem("spend_token");
   localStorage.removeItem("spend_user");
 }
+
+export function updateStoredUser(user) {
+  localStorage.setItem("spend_user", JSON.stringify(user));
+}

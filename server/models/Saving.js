@@ -6,7 +6,10 @@ const savingSchema = new mongoose.Schema({
   description: { type: String, default: "" },
   amount: { type: Number, default: 0 },
   discount: { type: String, default: "" },
-  unlocked: { type: Boolean, default: false }
+  category: { type: String, default: "General" },
+  unlocked: { type: Boolean, default: false },
+  redeemed: { type: Boolean, default: false },
+  redeemedAt: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Saving", savingSchema);

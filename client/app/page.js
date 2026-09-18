@@ -2,49 +2,81 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, CreditCard,
-  FileText, Home, Menu, Plus, Receipt, ScanLine, Settings,
-  ShoppingBag, Sparkles, TrendingUp, Wallet, X, LogOut
+  Bell, Building2, Check, ChevronRight, Crown, Download, FileText, Hash,
+  HelpCircle, Home, Loader2, LogOut, Phone, Receipt, ScanLine, Settings,
+  ShoppingBag, Sparkles, Trash2, TrendingUp, User, Wallet, X
 } from "lucide-react";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { api, clearSession, saveSession } from "../lib/api";
+import { api, clearSession, updateStoredUser } from "../lib/api";
+import AuthWelcome from "../components/AuthWelcome";
 
-const demoChart = [
-  { month: "Oct", amount: 4200 }, { month: "Nov", amount: 5100 },
-  { month: "Dec", amount: 4800 }, { month: "Jan", amount: 6200 },
-  { month: "Feb", amount: 5900 }, { month: "Mar", amount: 8545 }
-];
+const SAVINGS_CATEGORIES = ["All", "Utilities", "Groceries", "Dining"];
+
+function parseReceiptText(text) {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  let bestAmount = 0;
+  let totalLineAmount = 0;
+  lines.forEach((line) => {
+    const isTotalLine = /total|amount due|grand total|net payable|balance due/i.test(line);
+    const matches = line.match(/[0-9]+(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?/g) || [];
+    matches.forEach((m) => {
+      const value = Number(m.replace(/,/g, ""));
+      if (!Number.isFinite(value)) return;
+      if (isTotalLine && value > totalLineAmount) totalLineAmount = value;
+      if (value > bestAmount) bestAmount = value;
+    });
+  });
+  const amount = totalLineAmount || bestAmount || "";
+
+  const merchantName = lines.find((l) => l.length > 2 && !/^[0-9.,₹\s-]+$/.test(l)) || "";
+
+  const dateMatch = text.match(/(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})/);
+  let date = new Date().toISOString().slice(0, 10);
+  if (dateMatch) {
+    const parsedDate = new Date(dateMatch[1].replace(/\./g, "/"));
+    if (!Number.isNaN(parsedDate.getTime())) date = parsedDate.toISOString().slice(0, 10);
+  }
+
+  return { merchantName: merchantName.slice(0, 60), amount, category: "Other", gstRate: 18, paymentMethod: "Other", date };
+}
 
 export default function HomePage() {
   const [user, setUser] = useState(null);
-  const [loginMode, setLoginMode] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [activeTab, setActiveTab] = useState("home");
   const [modal, setModal] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [bills, setBills] = useState([]);
   const [savings, setSavings] = useState([]);
+  const [savingsFilter, setSavingsFilter] = useState("All");
   const [summary, setSummary] = useState({ total: 0, gst: 0, count: 0 });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanDraft, setScanDraft] = useState(null);
+  const [scanError, setScanError] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("spend_user");
     if (stored) setUser(JSON.parse(stored));
-    else setAuthOpen(true);
+    setCheckingSession(false);
   }, []);
 
   useEffect(() => {
     if (user) loadData();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [e, s, b, sa] = await Promise.all([
-        api("/expenses"), api("/expenses/summary"), api("/bills"), api("/savings")
+      const [e, s, b, sa, me] = await Promise.all([
+        api("/expenses"), api("/expenses/summary"), api("/bills"), api("/savings"), api("/auth/me")
       ]);
       setExpenses(e); setSummary(s); setBills(b); setSavings(sa);
+      setUser(me);
+      updateStoredUser(me);
     } catch (err) {
       setToast(err.message);
     } finally {
@@ -52,25 +84,29 @@ export default function HomePage() {
     }
   }
 
-  async function submitAuth(event) {
-    event.preventDefault();
-    const f = new FormData(event.currentTarget);
-    try {
-      const path = loginMode ? "/auth/login" : "/auth/register";
-      const data = await api(path, {
-        method: "POST",
-        body: JSON.stringify({
-          name: f.get("name"),
-          email: f.get("email"),
-          password: f.get("password")
-        })
-      });
-      saveSession(data);
-      setUser(data.user);
-      setAuthOpen(false);
-      setToast(loginMode ? "Welcome back!" : "Account created!");
-    } catch (err) { setToast(err.message); }
-  }
+  const monthlyChart = useMemo(() => {
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, month: d.toLocaleString("en-IN", { month: "short" }), amount: 0 });
+    }
+    expenses.forEach((x) => {
+      const d = new Date(x.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const bucket = months.find((m) => m.key === key);
+      if (bucket) bucket.amount += x.amount;
+    });
+    return months;
+  }, [expenses]);
+
+  const hasChartData = monthlyChart.some((m) => m.amount > 0);
+  const cgstTotal = expenses.reduce((sum, x) => sum + (x.cgst || 0), 0);
+  const sgstTotal = expenses.reduce((sum, x) => sum + (x.sgst || 0), 0);
+  const taxIdentifiedCount = expenses.filter((x) => x.gst > 0).length;
+  const savingsUnlockedTotal = savings.filter((s) => s.redeemed).reduce((sum, s) => sum + s.amount, 0);
+  const totalMatchedSavings = savings.filter((s) => !s.redeemed).reduce((sum, s) => sum + s.amount, 0);
+  const filteredSavings = savingsFilter === "All" ? savings : savings.filter((s) => s.category === savingsFilter);
 
   async function addExpense(event) {
     event.preventDefault();
@@ -120,174 +156,319 @@ export default function HomePage() {
     } catch (err) { setToast(err.message); }
   }
 
+  async function deleteExpense(id) {
+    if (!window.confirm("Delete this expense?")) return;
+    try {
+      await api(`/expenses/${id}`, { method: "DELETE" });
+      await loadData();
+      setToast("Expense deleted.");
+    } catch (err) { setToast(err.message); }
+  }
+
+  async function redeemSaving(id) {
+    try {
+      await api(`/savings/${id}/redeem`, { method: "PATCH" });
+      await loadData();
+      setToast("Offer applied to your savings.");
+    } catch (err) { setToast(err.message); }
+  }
+
+  async function updateProfile(event) {
+    event.preventDefault();
+    const f = new FormData(event.currentTarget);
+    try {
+      const updated = await api("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          monthlyIncome: Number(f.get("monthlyIncome")),
+          phone: f.get("phone"),
+          businessName: f.get("businessName"),
+          gstin: f.get("gstin")
+        })
+      });
+      setUser(updated);
+      updateStoredUser(updated);
+      setToast("Profile updated.");
+    } catch (err) { setToast(err.message); }
+  }
+
+  function closeScanModal() {
+    setModal(null);
+    setScanDraft(null);
+    setScanError("");
+  }
+
+  async function handleScanFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setScanError("");
+    setScanDraft(null);
+    setScanBusy(true);
+    try {
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+      const { data } = await worker.recognize(file);
+      await worker.terminate();
+      setScanDraft(parseReceiptText(data.text));
+    } catch (err) {
+      setScanError("Could not read this file. Try a clearer photo or enter the expense manually.");
+    } finally {
+      setScanBusy(false);
+    }
+  }
+
+  async function saveScannedExpense(event) {
+    event.preventDefault();
+    const f = new FormData(event.currentTarget);
+    try {
+      await api("/expenses", {
+        method: "POST",
+        body: JSON.stringify({
+          merchantName: f.get("merchantName"),
+          category: f.get("category"),
+          amount: Number(f.get("amount")),
+          gstRate: Number(f.get("gstRate")),
+          paymentMethod: f.get("paymentMethod"),
+          date: f.get("date"),
+          scanned: true
+        })
+      });
+      closeScanModal();
+      await loadData();
+      setToast("Scanned expense saved.");
+    } catch (err) { setToast(err.message); }
+  }
+
   function logout() {
     clearSession();
     setUser(null);
     setExpenses([]);
     setBills([]);
-    setAuthOpen(true);
+    setActiveTab("home");
   }
+
+  function handleAuthed(data) {
+    setUser(data.user);
+    setToast(`Welcome, ${data.user.name}!`);
+  }
+
+  if (checkingSession) return null;
+  if (!user) return <AuthWelcome onAuthed={handleAuthed} />;
 
   const totalSpent = summary.total || 0;
   const totalGST = summary.gst || 0;
-  const saved = Math.max(0, 32000 - totalSpent);
+  const monthlyIncome = user?.monthlyIncome || 0;
+  const saved = Math.max(0, monthlyIncome - totalSpent);
+  const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen pb-24">
       <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-          <a href="#" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white"><Wallet size={20}/></div>
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-bold text-white">{initial}</div>
             <div>
-              <h1 className="font-bold">Spend It Wisely</h1>
-              <p className="text-xs text-gray-500">Smart money management</p>
+              <p className="text-xs text-gray-400">Welcome back,</p>
+              <p className="font-bold leading-tight">{user?.name}</p>
             </div>
-          </a>
-          <nav className="hidden gap-8 md:flex">
-            <a className="font-semibold" href="#home">Home</a>
-            <a className="text-gray-500" href="#bills">Bills</a>
-            <a className="text-gray-500" href="#savings">Savings</a>
-            <a className="text-gray-500" href="#profile">Profile</a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <button className="hidden rounded-xl p-2 hover:bg-gray-100 sm:block"><Bell size={20}/></button>
-            <button onClick={() => setMobileMenu(!mobileMenu)} className="rounded-xl p-2 hover:bg-gray-100 md:hidden">{mobileMenu ? <X/>:<Menu/>}</button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="rounded-xl p-2 text-gray-400 hover:bg-gray-100"><Bell size={20}/></button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <Wallet size={18} className="text-blue-600"/>
+              <span className="text-sm font-bold text-blue-600">Spend It Wisely</span>
+            </div>
           </div>
         </div>
-        {mobileMenu && <div className="border-t bg-white px-5 py-4 md:hidden">
-          <div className="flex flex-col gap-4">
-            <a href="#home" onClick={() => setMobileMenu(false)}>Home</a>
-            <a href="#bills" onClick={() => setMobileMenu(false)}>Bills</a>
-            <a href="#savings" onClick={() => setMobileMenu(false)}>Savings</a>
-            <a href="#profile" onClick={() => setMobileMenu(false)}>Profile</a>
-          </div>
-        </div>}
       </header>
 
-      <div id="home" className="mx-auto max-w-7xl px-5 py-8 pb-24">
-        <section className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-          <div className="rounded-3xl bg-black p-7 text-white shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-gray-400">This month you spent</p>
-                <h2 className="mt-2 text-4xl font-bold">₹{totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h2>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-3"><TrendingUp/></div>
-            </div>
-            <div className="mt-8 h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={demoChart}>
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} stroke="#999"/>
-                  <Tooltip/>
-                  <Area type="monotone" dataKey="amount" stroke="#fff" fill="#fff" fillOpacity={0.08}/>
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <Metric label="Income" value="₹32,000"/>
-              <Metric label="Spent" value={`₹${totalSpent.toLocaleString("en-IN")}`}/>
-              <Metric label="Saved" value={`₹${saved.toLocaleString("en-IN")}`}/>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Quick icon={<ArrowUpRight/>} title="Sent"/>
-            <Quick icon={<ArrowDownLeft/>} title="Receive"/>
-            <Quick icon={<CreditCard/>} title="Loan"/>
-            <Quick icon={<Plus/>} title="Topup"/>
-          </div>
-        </section>
-
-        <section className="mt-8 grid gap-4 md:grid-cols-2">
-          <Insight title="Similar plans charge 12%" text="Compare your bills with category averages."/>
-          <Insight title="GST Analysis" text={`₹${totalGST.toLocaleString("en-IN")} GST tracked from your expenses.`}/>
-        </section>
-
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Tool onClick={() => setModal("scan")} icon={<ScanLine/>} title="Scan Invoice" text="Upload an invoice"/>
-          <Tool onClick={() => setModal("expense")} icon={<Receipt/>} title="Add Expense" text="Track a new expense"/>
-          <Tool onClick={() => setModal("bill")} icon={<FileText/>} title="Add Bill" text="Track a recurring bill"/>
-          <Tool onClick={() => setToast("Reports can be exported in the next release.")} icon={<Settings/>} title="Reports" text="Monthly report"/>
-        </section>
-
-        <section className="mt-10">
-          <Section title="Your Expenses" desc="Track your latest spending"/>
-          <div className="mt-5 overflow-hidden rounded-3xl bg-white shadow-sm">
-            {loading ? <Empty text="Loading your data..."/> : expenses.length === 0 ? <Empty text="No expenses yet. Add your first one."/> :
-              expenses.map(x => <div key={x._id} className="flex items-center justify-between border-b p-5 last:border-0">
-                <div className="flex items-center gap-4">
-                  <div className="rounded-2xl bg-gray-100 p-3"><ShoppingBag size={19}/></div>
-                  <div><p className="font-semibold">{x.merchantName}</p><p className="text-sm text-gray-500">{x.category} · {x.paymentMethod}</p></div>
+      <div className="mx-auto max-w-3xl px-5 py-6">
+        {activeTab === "home" && (
+          <>
+            <section className="rounded-3xl bg-gradient-to-br from-blue-600 to-slate-900 p-7 text-white shadow-xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-blue-100">This month you spent</p>
+                  <h2 className="mt-2 text-4xl font-bold">₹{totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h2>
                 </div>
-                <div className="text-right"><p className="font-bold">₹{x.amount.toLocaleString("en-IN")}</p><p className="text-xs text-gray-500">GST ₹{x.gst.toLocaleString("en-IN")}</p></div>
-              </div>)
-            }
-          </div>
-        </section>
+                <div className="rounded-2xl bg-white/10 p-3"><TrendingUp/></div>
+              </div>
+              <div className="mt-8 h-48">
+                {hasChartData ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={monthlyChart}>
+                      <XAxis dataKey="month" axisLine={false} tickLine={false} stroke="#bfdbfe"/>
+                      <Tooltip formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Spent"]}/>
+                      <Area type="monotone" dataKey="amount" stroke="#fff" fill="#fff" fillOpacity={0.12}/>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-blue-200">No chart data available.</div>
+                )}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <Metric label="Income" value={`₹${monthlyIncome.toLocaleString("en-IN")}`}/>
+                <Metric label="Spent" value={`₹${totalSpent.toLocaleString("en-IN")}`}/>
+                <Metric label="Saved" value={`₹${saved.toLocaleString("en-IN")}`}/>
+              </div>
+            </section>
 
-        <section id="bills" className="mt-10">
-          <Section title="Bills" desc="Manage upcoming and paid bills"/>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {bills.length === 0 ? <Empty text="No bills yet. Add one above."/> :
-              bills.map(b => <div key={b._id} className="rounded-3xl bg-white p-5 shadow-sm">
-                <div className="flex justify-between"><div><p className="font-bold">{b.title}</p><p className="text-sm text-gray-500">{b.provider}</p></div>
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${b.status === "Paid" ? "bg-gray-200" : "bg-black text-white"}`}>{b.status}</span></div>
-                <p className="mt-5 text-2xl font-bold">₹{b.amount.toLocaleString("en-IN")}</p>
-                <p className="mt-1 text-sm text-gray-500">Due {new Date(b.dueDate).toLocaleDateString("en-IN")}</p>
-                {b.status !== "Paid" && <button onClick={() => payBill(b._id)} className="mt-5 w-full rounded-xl bg-black py-3 text-sm font-semibold text-white">Mark as paid</button>}
-              </div>)
-            }
-          </div>
-        </section>
+            <section className="mt-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold">GST Components</h2>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">Live feed</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <GstCard label="CGST" value={cgstTotal}/>
+                <GstCard label="SGST" value={sgstTotal}/>
+                <GstCard label="IGST" value={0}/>
+              </div>
+            </section>
 
-        <section className="mt-10">
-          <Section title="Bills History" desc="Recent transactions from your account"/>
-          <div className="mt-5 rounded-3xl bg-white p-5 shadow-sm">
-            {expenses.slice(0, 5).map(x => <div key={x._id} className="flex items-center justify-between border-b py-4 last:border-0">
-              <div><p className="font-semibold">{x.merchantName}</p><p className="text-sm text-gray-500">{new Date(x.date).toLocaleString("en-IN")} · {x.category}</p></div>
-              <p className="font-bold">₹{x.amount.toLocaleString("en-IN")}</p>
-            </div>)}
-            {!expenses.length && <Empty text="Your history will appear here."/>}
-          </div>
-        </section>
+            <section className="mt-8 grid gap-4 sm:grid-cols-3">
+              <Tool onClick={() => setModal("scan")} icon={<ScanLine/>} title="Scan Invoice" text="Upload an invoice"/>
+              <Tool onClick={() => setModal("expense")} icon={<Receipt/>} title="Add Expense" text="Track a new expense"/>
+              <Tool onClick={() => setModal("bill")} icon={<FileText/>} title="Add Bill" text="Track a recurring bill"/>
+            </section>
+          </>
+        )}
 
-        <section id="savings" className="mt-10">
-          <Section title="Savings & Offers" desc="Discover ways to reduce regular bills"/>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {savings.map(s => <div key={s._id} className="rounded-3xl bg-white p-6 shadow-sm">
-              <span className="rounded-full bg-black px-3 py-1 text-xs font-bold text-white">{s.discount || "OFFER"}</span>
-              <h3 className="mt-5 text-lg font-bold">{s.title}</h3>
-              <p className="mt-2 text-sm text-gray-500">{s.description}</p>
-              <button onClick={() => setToast("Offer selected. Connect a payment provider to enable payment.")} className="mt-5 flex items-center gap-1 font-bold">Pay <ChevronRight size={17}/></button>
-            </div>)}
-          </div>
-          <div className="mt-5 rounded-3xl bg-black p-7 text-white">
-            <div className="flex items-center gap-3"><Sparkles/><p className="font-semibold">15% Unlocked</p></div>
-            <h3 className="mt-3 text-2xl font-bold">You unlocked ₹480 this month</h3>
-            <p className="mt-2 text-sm text-gray-400">Keep tracking expenses to discover more savings.</p>
-          </div>
-        </section>
-
-        <section id="profile" className="mt-10">
-          <div className="rounded-3xl bg-white p-7 shadow-sm">
-            <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
-              <div><p className="text-sm text-gray-500">Profile</p><h3 className="mt-1 text-2xl font-bold">{user?.name}</h3><p className="text-gray-500">{user?.email}</p></div>
-              <button onClick={logout} className="flex items-center justify-center gap-2 rounded-xl border px-5 py-3 font-semibold"><LogOut size={17}/> Log out</button>
+        {activeTab === "bills" && (
+          <>
+            <Section title="Bills" desc="Manage upcoming and paid bills"/>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {bills.length === 0 ? <Empty text="No bills yet. Add one from the Home tab."/> :
+                bills.map(b => <div key={b._id} className="rounded-3xl bg-white p-5 shadow-sm">
+                  <div className="flex justify-between"><div><p className="font-bold">{b.title}</p><p className="text-sm text-gray-500">{b.provider}</p></div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${b.status === "Paid" ? "bg-gray-200" : "bg-blue-600 text-white"}`}>{b.status}</span></div>
+                  <p className="mt-5 text-2xl font-bold">₹{b.amount.toLocaleString("en-IN")}</p>
+                  <p className="mt-1 text-sm text-gray-500">Due {new Date(b.dueDate).toLocaleDateString("en-IN")}</p>
+                  {b.status !== "Paid" && <button onClick={() => payBill(b._id)} className="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700">Mark as paid</button>}
+                </div>)
+              }
             </div>
-          </div>
-        </section>
+
+            <div className="mt-8 overflow-hidden rounded-3xl bg-white shadow-sm">
+              <QuickLink icon={<Download size={18}/>} label="Download Monthly Report" onClick={() => setToast("Report export isn't wired up in this demo.")}/>
+              <QuickLink icon={<HelpCircle size={18}/>} label="Help & Support" onClick={() => setToast("Help & Support isn't wired up in this demo.")}/>
+              <QuickLink icon={<Settings size={18}/>} label="Settings" onClick={() => setToast("Settings aren't wired up in this demo.")} last/>
+            </div>
+
+            <div className="mt-8">
+              <Section title="Transaction History" desc="Every expense you've tracked"/>
+              <div className="mt-5 overflow-hidden rounded-3xl bg-white shadow-sm">
+                {loading ? <Empty text="Loading your data..."/> : expenses.length === 0 ? <Empty text="No expenses yet."/> :
+                  expenses.map(x => <div key={x._id} className="flex items-center justify-between border-b p-5 last:border-0">
+                    <div className="flex items-center gap-4">
+                      <div className="rounded-2xl bg-blue-50 p-3 text-blue-600"><ShoppingBag size={19}/></div>
+                      <div><p className="font-semibold">{x.merchantName}</p><p className="text-sm text-gray-500">{new Date(x.date).toLocaleDateString("en-IN")} · {x.category}</p></div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right"><p className="font-bold">₹{x.amount.toLocaleString("en-IN")}</p><p className="text-xs text-gray-500">GST ₹{x.gst.toLocaleString("en-IN")}</p></div>
+                      <button onClick={() => deleteExpense(x._id)} aria-label="Delete expense" className="rounded-xl p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={18}/></button>
+                    </div>
+                  </div>)
+                }
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "savings" && (
+          <>
+            <div className="rounded-3xl bg-gradient-to-br from-blue-600 to-blue-900 p-7 text-white">
+              <p className="text-xs uppercase tracking-wide text-blue-200">Total matched savings</p>
+              <p className="mt-2 text-3xl font-bold">₹{totalMatchedSavings.toLocaleString("en-IN")} available</p>
+              <p className="mt-2 text-sm text-blue-200">Personalized for your spending patterns.</p>
+            </div>
+
+            <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+              {SAVINGS_CATEGORIES.map((cat) => (
+                <button key={cat} onClick={() => setSavingsFilter(cat)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${savingsFilter === cat ? "bg-blue-600 text-white" : "border bg-white text-gray-600"}`}>{cat}</button>
+              ))}
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {filteredSavings.length === 0 ? <Empty text="No offers in this category yet."/> :
+                filteredSavings.map(s => <div key={s._id} className="rounded-3xl bg-white p-6 shadow-sm">
+                  <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">{s.discount || "OFFER"}</span>
+                  <h3 className="mt-5 text-lg font-bold">{s.title}</h3>
+                  <p className="mt-2 text-sm text-gray-500">{s.description}</p>
+                  {s.redeemed ? (
+                    <span className="mt-5 flex items-center gap-1 font-bold text-green-600"><Check size={17}/> Applied</span>
+                  ) : (
+                    <button onClick={() => redeemSaving(s._id)} className="mt-5 flex items-center gap-1 font-bold text-blue-600">Apply <ChevronRight size={17}/></button>
+                  )}
+                </div>)
+              }
+            </div>
+
+            <div className="mt-5 rounded-3xl bg-gradient-to-br from-blue-600 to-slate-900 p-7 text-white">
+              <div className="flex items-center gap-3"><Sparkles/><p className="font-semibold">Savings unlocked</p></div>
+              <h3 className="mt-3 text-2xl font-bold">You unlocked ₹{savingsUnlockedTotal.toLocaleString("en-IN")} this month</h3>
+              <p className="mt-2 text-sm text-blue-200">Keep tracking expenses to discover more savings.</p>
+            </div>
+          </>
+        )}
+
+        {activeTab === "profile" && (
+          <>
+            <div className="rounded-3xl bg-gradient-to-br from-blue-600 to-blue-900 p-7 text-center text-white">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-4 border-white/30 bg-white/10 text-2xl font-bold">{initial}</div>
+              <h3 className="mt-4 text-xl font-bold">{user?.name}</h3>
+              <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/15 px-4 py-1 text-xs font-semibold uppercase tracking-wide">
+                <Crown size={14}/> {user?.plan === "premium" ? "Premium plan" : "Free plan"}
+              </span>
+              {user?.plan !== "premium" && (
+                <div>
+                  <button onClick={() => setToast("Real payments aren't wired up in this demo — this is where an upgrade flow would go.")} className="mt-4 rounded-xl bg-white px-6 py-2 text-sm font-bold text-blue-700">Upgrade</button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <StatCard value={user?.billsScanned || 0} label="Bills scanned"/>
+              <StatCard value={taxIdentifiedCount} label="Tax identified"/>
+              <StatCard value={`₹${savingsUnlockedTotal.toLocaleString("en-IN")}`} label="Savings unlocked"/>
+            </div>
+
+            <div className="mt-6 rounded-3xl bg-white p-7 shadow-sm">
+              <h3 className="font-bold">Profile details</h3>
+              <p className="mt-1 text-sm text-gray-500">{user?.email}</p>
+              <form key={user?.id} onSubmit={updateProfile} className="mt-5 space-y-4">
+                <TextField icon={<Building2 size={18}/>} name="businessName" defaultValue={user?.businessName} placeholder="Business name (optional)"/>
+                <TextField icon={<Hash size={18}/>} name="gstin" defaultValue={user?.gstin} placeholder="GSTIN (optional)"/>
+                <TextField icon={<Phone size={18}/>} name="phone" defaultValue={user?.phone} placeholder="Phone number (optional)"/>
+                <div>
+                  <label className="text-sm text-gray-500">Monthly income</label>
+                  <input name="monthlyIncome" type="number" min="0" step="0.01" defaultValue={user?.monthlyIncome || 0} className="field mt-1"/>
+                </div>
+                <button className="primary">Save profile</button>
+              </form>
+            </div>
+
+            <button onClick={logout} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border bg-white px-5 py-3 font-semibold shadow-sm"><LogOut size={17}/> Log out</button>
+          </>
+        )}
       </div>
 
-      {user && <button onClick={() => setModal("expense")} className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-2xl hover:scale-105"><Plus/></button>}
-
-      {authOpen && <Modal title={loginMode ? "Welcome back" : "Create your account"} onClose={user ? () => setAuthOpen(false) : undefined}>
-        <form onSubmit={submitAuth} className="space-y-4">
-          {!loginMode && <input name="name" required placeholder="Full name" className="field"/>}
-          <input name="email" type="email" required placeholder="Email address" className="field"/>
-          <input name="password" type="password" required minLength="6" placeholder="Password (6+ characters)" className="field"/>
-          <button className="primary">{loginMode ? "Log in" : "Create account"}</button>
-          <button type="button" onClick={() => setLoginMode(!loginMode)} className="w-full text-sm text-gray-500">{loginMode ? "Need an account? Sign up" : "Already have an account? Log in"}</button>
-        </form>
-      </Modal>}
+      <nav className="bottom-nav">
+        <button onClick={() => setActiveTab("home")} className={`bottom-nav-item ${activeTab === "home" ? "active" : ""}`}>
+          <Home size={20}/><span>Home</span>
+        </button>
+        <button onClick={() => setActiveTab("bills")} className={`bottom-nav-item ${activeTab === "bills" ? "active" : ""}`}>
+          <FileText size={20}/><span>Bills</span>
+        </button>
+        <button onClick={() => setModal("scan")} className="bottom-nav-scan" aria-label="Scan invoice">
+          <ScanLine size={22}/>
+        </button>
+        <button onClick={() => setActiveTab("savings")} className={`bottom-nav-item ${activeTab === "savings" ? "active" : ""}`}>
+          <Sparkles size={20}/><span>Savings</span>
+        </button>
+        <button onClick={() => setActiveTab("profile")} className={`bottom-nav-item ${activeTab === "profile" ? "active" : ""}`}>
+          <User size={20}/><span>Profile</span>
+        </button>
+      </nav>
 
       {modal === "expense" && <Modal title="Add expense" onClose={() => setModal(null)}>
         <form onSubmit={addExpense} className="space-y-4">
@@ -310,24 +491,62 @@ export default function HomePage() {
         </form>
       </Modal>}
 
-      {modal === "scan" && <Modal title="Scan invoice" onClose={() => setModal(null)}>
-        <div className="rounded-2xl border-2 border-dashed p-8 text-center">
-          <ScanLine className="mx-auto" size={34}/>
-          <p className="mt-3 font-semibold">Upload invoice image/PDF</p>
-          <p className="mt-1 text-sm text-gray-500">OCR integration is the next production step.</p>
-          <input type="file" accept="image/*,.pdf" className="mt-5 w-full text-sm"/>
-        </div>
+      {modal === "scan" && <Modal title="Scan invoice" onClose={closeScanModal}>
+        {!scanDraft && (
+          <div className="rounded-2xl border-2 border-dashed p-8 text-center">
+            {scanBusy ? (
+              <>
+                <Loader2 className="mx-auto animate-spin text-blue-600" size={34}/>
+                <p className="mt-3 font-semibold">Reading your invoice...</p>
+                <p className="mt-1 text-sm text-gray-500">This runs in your browser and can take a few seconds.</p>
+              </>
+            ) : (
+              <>
+                <ScanLine className="mx-auto text-blue-600" size={34}/>
+                <p className="mt-3 font-semibold">Upload invoice image</p>
+                <p className="mt-1 text-sm text-gray-500">We'll extract the merchant and amount automatically. You can review before saving.</p>
+                <input type="file" accept="image/*" onChange={handleScanFile} className="mt-5 w-full text-sm"/>
+                {scanError && <p className="mt-3 text-sm text-red-600">{scanError}</p>}
+              </>
+            )}
+          </div>
+        )}
+        {scanDraft && (
+          <form onSubmit={saveScannedExpense} className="space-y-4">
+            <p className="text-sm text-gray-500">Review the extracted details and adjust anything that looks off.</p>
+            <input name="merchantName" required defaultValue={scanDraft.merchantName} placeholder="Merchant name" className="field"/>
+            <select name="category" defaultValue={scanDraft.category} className="field"><option>Food</option><option>Bills</option><option>Shopping</option><option>Transport</option><option>Entertainment</option><option>Healthcare</option><option>Other</option></select>
+            <input name="amount" type="number" min="0" step="0.01" required defaultValue={scanDraft.amount} placeholder="Amount" className="field"/>
+            <input name="gstRate" type="number" min="0" step="0.01" defaultValue={scanDraft.gstRate} placeholder="GST %" className="field"/>
+            <select name="paymentMethod" defaultValue={scanDraft.paymentMethod} className="field"><option>UPI</option><option>Card</option><option>Cash</option><option>Bank Transfer</option><option>Other</option></select>
+            <input name="date" type="date" defaultValue={scanDraft.date} className="field"/>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => { setScanDraft(null); setScanError(""); }} className="w-full rounded-xl border py-3 text-sm font-semibold">Rescan</button>
+              <button className="primary">Save expense</button>
+            </div>
+          </form>
+        )}
       </Modal>}
 
-      {toast && <div className="fixed bottom-5 left-1/2 z-[200] -translate-x-1/2 rounded-xl bg-black px-5 py-3 text-sm font-semibold text-white shadow-xl" onClick={() => setToast("")}>{toast}</div>}
+      {toast && <div className="fixed bottom-20 left-1/2 z-[200] -translate-x-1/2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl" onClick={() => setToast("")}>{toast}</div>}
     </main>
   );
 }
 
-function Metric({label,value}) { return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-gray-400">{label}</p><p className="mt-1 font-semibold">{value}</p></div>; }
-function Quick({icon,title}) { return <button className="group rounded-3xl bg-white p-6 text-left shadow-sm hover:-translate-y-1 hover:shadow-lg"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 group-hover:bg-black group-hover:text-white">{icon}</div><p className="mt-5 font-bold">{title}</p><p className="mt-1 text-sm text-gray-500">Manage</p></button>; }
-function Insight({title,text}) { return <div className="rounded-3xl bg-white p-6 shadow-sm"><p className="font-bold">{title}</p><p className="mt-2 text-sm text-gray-500">{text}</p></div>; }
-function Tool({icon,title,text,onClick}) { return <button onClick={onClick} className="rounded-3xl bg-white p-6 text-left shadow-sm hover:-translate-y-1 hover:shadow-lg"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100">{icon}</div><h3 className="mt-5 font-bold">{title}</h3><p className="mt-1 text-sm text-gray-500">{text}</p></button>; }
+function TextField({ icon, ...props }) {
+  return (
+    <div className="field-icon-wrap">
+      {icon}
+      <input className="field" {...props}/>
+    </div>
+  );
+}
+
+function Metric({label,value}) { return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-blue-100">{label}</p><p className="mt-1 font-semibold">{value}</p></div>; }
+function GstCard({label,value}) { return <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-semibold text-blue-600">{label}</p><p className="mt-2 text-lg font-bold">₹{value.toLocaleString("en-IN")}</p><div className="mt-3 h-1 w-10 rounded-full bg-blue-600"/></div>; }
+function StatCard({value,label}) { return <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><p className="text-xl font-bold">{value}</p><p className="mt-1 text-xs text-gray-500">{label}</p></div>; }
+function Tool({icon,title,text,onClick}) { return <button onClick={onClick} className="rounded-3xl bg-white p-6 text-left shadow-sm hover:-translate-y-1 hover:shadow-lg"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">{icon}</div><h3 className="mt-5 font-bold">{title}</h3><p className="mt-1 text-sm text-gray-500">{text}</p></button>; }
+function QuickLink({icon,label,onClick,last}) { return <button onClick={onClick} className={`flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 ${last ? "" : "border-b"}`}><span className="flex items-center gap-3 font-semibold"><span className="text-gray-400">{icon}</span>{label}</span><ChevronRight size={18} className="text-gray-300"/></button>; }
 function Section({title,desc}) { return <div><h2 className="text-2xl font-bold">{title}</h2><p className="mt-1 text-sm text-gray-500">{desc}</p></div>; }
 function Empty({text}) { return <div className="p-8 text-center text-gray-500">{text}</div>; }
 function Modal({title,children,onClose}) { return <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-6"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">{title}</h2>{onClose && <button onClick={onClose} className="rounded-xl p-2 hover:bg-gray-100"><X/></button>}</div><div className="mt-6">{children}</div></div></div>; }
