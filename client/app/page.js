@@ -262,9 +262,30 @@ export default function HomePage() {
   const initial = (user?.name || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <main className="min-h-screen pb-24">
+    <div className="min-h-screen">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r bg-white lg:flex">
+        <div className="flex items-center gap-3 px-6 py-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"><Wallet size={20}/></div>
+          <div>
+            <p className="font-bold leading-tight">Spend It Wisely</p>
+            <p className="text-xs text-gray-400 leading-tight">Smart money management</p>
+          </div>
+        </div>
+        <nav className="flex-1 space-y-1 px-4">
+          <SidebarLink icon={<Home size={18}/>} label="Home" active={activeTab === "home"} onClick={() => setActiveTab("home")}/>
+          <SidebarLink icon={<FileText size={18}/>} label="Bills" active={activeTab === "bills"} onClick={() => setActiveTab("bills")}/>
+          <SidebarLink icon={<Sparkles size={18}/>} label="Savings" active={activeTab === "savings"} onClick={() => setActiveTab("savings")}/>
+          <SidebarLink icon={<User size={18}/>} label="Profile" active={activeTab === "profile"} onClick={() => setActiveTab("profile")}/>
+        </nav>
+        <div className="p-4">
+          <button onClick={() => setModal("scan")} className="primary flex items-center justify-center gap-2"><ScanLine size={18}/> Scan Invoice</button>
+        </div>
+        <button onClick={logout} className="flex items-center gap-2 border-t px-6 py-4 text-sm font-semibold text-gray-500 hover:bg-gray-50"><LogOut size={16}/> Log out</button>
+      </aside>
+
+      <div className="lg:pl-64">
       <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3 lg:max-w-5xl">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white">{initial}</div>
             <div className="min-w-0">
@@ -274,7 +295,7 @@ export default function HomePage() {
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <button className="rounded-xl p-2 text-gray-400 hover:bg-gray-100"><Bell size={20}/></button>
-            <div className="hidden items-center gap-2 sm:flex">
+            <div className="hidden items-center gap-2 sm:flex lg:hidden">
               <Wallet size={18} className="text-blue-600"/>
               <span className="text-sm font-bold text-blue-600">Spend It Wisely</span>
             </div>
@@ -282,7 +303,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-5 py-6">
+      <div className="mx-auto max-w-3xl px-5 py-6 pb-24 lg:max-w-5xl lg:pb-10">
         {activeTab === "home" && (
           <>
             <section className="rounded-3xl bg-gradient-to-br from-blue-600 to-slate-900 p-7 text-white shadow-xl">
@@ -336,7 +357,7 @@ export default function HomePage() {
         {activeTab === "bills" && (
           <>
             <Section title="Bills" desc="Manage upcoming and paid bills"/>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {bills.length === 0 ? <Empty text="No bills yet. Add one from the Home tab."/> :
                 bills.map(b => <div key={b._id} className="rounded-3xl bg-white p-5 shadow-sm">
                   <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-bold">{b.title}</p><p className="truncate text-sm text-gray-500">{b.provider}</p></div>
@@ -388,7 +409,7 @@ export default function HomePage() {
               ))}
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredSavings.length === 0 ? <Empty text="No offers in this category yet."/> :
                 filteredSavings.map(s => <div key={s._id} className="rounded-3xl bg-white p-6 shadow-sm">
                   <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">{s.discount || "OFFER"}</span>
@@ -452,7 +473,7 @@ export default function HomePage() {
         )}
       </div>
 
-      <nav className="bottom-nav">
+      <nav className="bottom-nav lg:hidden">
         <button onClick={() => setActiveTab("home")} className={`bottom-nav-item ${activeTab === "home" ? "active" : ""}`}>
           <Home size={20}/><span>Home</span>
         </button>
@@ -529,7 +550,8 @@ export default function HomePage() {
       </Modal>}
 
       {toast && <div className="fixed bottom-20 left-1/2 z-[200] -translate-x-1/2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl" onClick={() => setToast("")}>{toast}</div>}
-    </main>
+      </div>
+    </div>
   );
 }
 
@@ -542,6 +564,7 @@ function TextField({ icon, ...props }) {
   );
 }
 
+function SidebarLink({icon,label,active,onClick}) { return <button onClick={onClick} className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${active ? "bg-blue-50 text-blue-600" : "text-gray-500 hover:bg-gray-50"}`}>{icon}{label}</button>; }
 function Metric({label,value}) { return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-blue-100">{label}</p><p className="mt-1 font-semibold">{value}</p></div>; }
 function GstCard({label,value}) { return <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-semibold text-blue-600">{label}</p><p className="mt-2 text-lg font-bold">₹{value.toLocaleString("en-IN")}</p><div className="mt-3 h-1 w-10 rounded-full bg-blue-600"/></div>; }
 function StatCard({value,label}) { return <div className="rounded-2xl bg-white p-4 text-center shadow-sm"><p className="text-xl font-bold">{value}</p><p className="mt-1 text-xs text-gray-500">{label}</p></div>; }
